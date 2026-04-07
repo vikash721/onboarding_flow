@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,10 +64,14 @@ const SECTIONS: {
   },
 ];
 
-export function FormView() {
-  const [step, setStep] = useState<Step>(1);
-  const isDevMode = process.env.NODE_ENV === "development";
-  const [formData, setFormData] = useState({
+type FormViewProps = {
+  initialSubmitted?: boolean;
+  initialData?: Record<string, string | null>;
+};
+
+export function FormView({ initialSubmitted = false, initialData }: FormViewProps) {
+  const defaultFormData = useMemo(
+    () => ({
     fullName: "",
     email: "",
     phone: "",
@@ -89,15 +93,68 @@ export function FormView() {
     xHandle: "",
     telegram: "",
     github: "",
-  });
-  const [submitted, setSubmitted] = useState(false);
+    }),
+    []
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const initialFormData = useMemo(
+    () =>
+      initialSubmitted
+        ? {
+            ...defaultFormData,
+            ...initialData,
+          }
+        : { ...defaultFormData },
+    [defaultFormData, initialData, initialSubmitted]
+  );
+
+  const [step, setStep] = useState<Step>(1);
+  const isDevMode = process.env.NODE_ENV === "development";
+  const [formData, setFormData] = useState(initialFormData);
+  const [submitted, setSubmitted] = useState(initialSubmitted);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFormData(initialSubmitted ? initialFormData : { ...defaultFormData });
+    setSubmitted(initialSubmitted);
+    setReviewMode(false);
+    setStep(1);
+    setSubmitError(null);
+  }, [defaultFormData, initialFormData, initialSubmitted]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (step < 5) {
       setStep((step + 1) as Step);
-    } else {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+
+      const response = await fetch("/api/submissions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to submit onboarding details");
+      }
+
       setSubmitted(true);
+      setReviewMode(false);
+    } catch (error) {
+      console.error("Onboarding submission error:", error);
+      setSubmitError("Could not submit right now. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -145,6 +202,28 @@ export function FormView() {
       github: "https://github.com/vikashkumar",
     });
     setStep(1);
+    setSubmitError(null);
+  };
+
+  const handleDevResetSubmission = async () => {
+    try {
+      setIsResetting(true);
+      const response = await fetch("/api/submissions/me", { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error("Failed to reset submission");
+      }
+
+      setFormData({ ...defaultFormData });
+      setSubmitted(false);
+      setReviewMode(false);
+      setStep(1);
+      setSubmitError(null);
+    } catch (error) {
+      console.error("Failed to reset submission in dev mode:", error);
+      setSubmitError("Could not reset submission right now.");
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   if (submitted) {
@@ -157,21 +236,36 @@ export function FormView() {
             </div>
           </div>
           <h2 className="mb-3 font-serif text-3xl leading-tight text-foreground md:text-4xl">
-            Onboarding complete
+            {initialSubmitted ? "Already submitted" : "Onboarding complete"}
           </h2>
           <p className="mb-8 text-muted-foreground">
-            Your details were submitted. HR may reach out if anything else is needed.
+            {initialSubmitted
+              ? "You have already submitted your onboarding details. Our team will review and contact you if updates are needed."
+              : "Your details were submitted. HR may reach out if anything else is needed."}
           </p>
           <Button
             onClick={() => {
               setSubmitted(false);
               setStep(1);
+              setReviewMode(initialSubmitted);
             }}
             size="lg"
             className="rounded-xl"
           >
-            Back to dashboard
+            {initialSubmitted ? "Review details again" : "Back to dashboard"}
           </Button>
+          {isDevMode && initialSubmitted && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleDevResetSubmission}
+              disabled={isResetting}
+              className="mt-3 rounded-lg border-dashed text-xs font-semibold"
+            >
+              {isResetting ? "Resetting..." : "Reset submitted state (dev)"}
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -284,7 +378,7 @@ export function FormView() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Section {step} of 5
               </p>
-              {isDevMode && (
+              {isDevMode && !reviewMode && (
                 <Button
                   type="button"
                   variant="outline"
@@ -300,11 +394,18 @@ export function FormView() {
               <h1 className="font-serif text-3xl tracking-tight text-foreground/95 md:text-4xl">
                 {current.label}
               </h1>
-              <span className="pb-1 text-sm text-muted-foreground">{current.description}</span>
+              <span className="pb-1 text-sm text-muted-foreground">
+                {current.description} {reviewMode ? "• Read-only review" : ""}
+              </span>
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               This is your main onboarding workspace. Information here is used by HR and payroll—keep it accurate and up to date.
             </p>
+            {submitError && (
+              <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/8 px-3 py-2 text-sm text-destructive">
+                {submitError}
+              </p>
+            )}
           </header>
 
           <form onSubmit={handleSubmit} className="space-y-10">
@@ -332,7 +433,8 @@ export function FormView() {
                           type="file"
                           accept="image/*"
                           onChange={handleFileChange}
-                          className="absolute inset-0 cursor-pointer opacity-0"
+                          disabled={reviewMode}
+                          className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
                           aria-label="Upload profile photo"
                         />
                       </div>
@@ -348,6 +450,7 @@ export function FormView() {
                     placeholder="e.g. Jane Cooper"
                     value={formData.fullName}
                     onChange={(v) => setFormData({ ...formData, fullName: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="Email"
@@ -355,18 +458,21 @@ export function FormView() {
                     placeholder="jane@company.com"
                     value={formData.email}
                     onChange={(v) => setFormData({ ...formData, email: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="Phone"
                     placeholder="+91 99999 00000"
                     value={formData.phone}
                     onChange={(v) => setFormData({ ...formData, phone: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="Aadhaar / PAN"
                     placeholder="As on document"
                     value={formData.aadhaarPan}
                     onChange={(v) => setFormData({ ...formData, aadhaarPan: v })}
+                    readOnly={reviewMode}
                   />
                 </>
               )}
@@ -379,6 +485,7 @@ export function FormView() {
                       placeholder="Apartment, street, locality"
                       value={formData.address}
                       onChange={(v) => setFormData({ ...formData, address: v })}
+                      readOnly={reviewMode}
                     />
                   </div>
                   <FormGroup
@@ -386,24 +493,28 @@ export function FormView() {
                     placeholder="City"
                     value={formData.city}
                     onChange={(v) => setFormData({ ...formData, city: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="State"
                     placeholder="State"
                     value={formData.state}
                     onChange={(v) => setFormData({ ...formData, state: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="ZIP / PIN"
                     placeholder="000000"
                     value={formData.zipCode}
                     onChange={(v) => setFormData({ ...formData, zipCode: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="Country"
                     placeholder="Country"
                     value={formData.country}
                     onChange={(v) => setFormData({ ...formData, country: v })}
+                    readOnly={reviewMode}
                   />
                 </>
               )}
@@ -415,12 +526,14 @@ export function FormView() {
                     placeholder="Full name"
                     value={formData.parentName}
                     onChange={(v) => setFormData({ ...formData, parentName: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="Parent / guardian phone"
                     placeholder="+91 99999 00000"
                     value={formData.parentPhone}
                     onChange={(v) => setFormData({ ...formData, parentPhone: v })}
+                    readOnly={reviewMode}
                   />
                 </>
               )}
@@ -433,6 +546,7 @@ export function FormView() {
                       placeholder="As on passbook or cheque"
                       value={formData.bankAccountName}
                       onChange={(v) => setFormData({ ...formData, bankAccountName: v })}
+                      readOnly={reviewMode}
                     />
                   </div>
                   <FormGroup
@@ -440,24 +554,28 @@ export function FormView() {
                     placeholder="Account number"
                     value={formData.accountNumber}
                     onChange={(v) => setFormData({ ...formData, accountNumber: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="IFSC"
                     placeholder="IFSC code"
                     value={formData.ifscCode}
                     onChange={(v) => setFormData({ ...formData, ifscCode: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="SWIFT (if applicable)"
                     placeholder="SWIFT code"
                     value={formData.swiftCode}
                     onChange={(v) => setFormData({ ...formData, swiftCode: v })}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="Bank-linked phone"
                     placeholder="+91 99999 00000"
                     value={formData.linkedPhone}
                     onChange={(v) => setFormData({ ...formData, linkedPhone: v })}
+                    readOnly={reviewMode}
                   />
                 </>
               )}
@@ -470,6 +588,7 @@ export function FormView() {
                     value={formData.telegram}
                     onChange={(v) => setFormData({ ...formData, telegram: v })}
                     required
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="LinkedIn (optional)"
@@ -477,6 +596,7 @@ export function FormView() {
                     value={formData.linkedin}
                     onChange={(v) => setFormData({ ...formData, linkedin: v })}
                     required={false}
+                    readOnly={reviewMode}
                   />
                   <FormGroup
                     label="X / Twitter (optional)"
@@ -484,6 +604,7 @@ export function FormView() {
                     value={formData.xHandle}
                     onChange={(v) => setFormData({ ...formData, xHandle: v })}
                     required={false}
+                    readOnly={reviewMode}
                   />
                   <div className="md:col-span-2">
                     <FormGroup
@@ -492,6 +613,7 @@ export function FormView() {
                       value={formData.github}
                       onChange={(v) => setFormData({ ...formData, github: v })}
                       required={false}
+                      readOnly={reviewMode}
                     />
                   </div>
                 </>
@@ -500,7 +622,7 @@ export function FormView() {
 
             <div className="flex flex-col-reverse gap-3 border-t border-border/80 pt-8 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
-                {step > 1 && (
+                {step > 1 && !reviewMode && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -512,10 +634,42 @@ export function FormView() {
                   </Button>
                 )}
               </div>
-              <Button type="submit" size="lg" className="gap-2 cursor-pointer rounded-xl sm:min-w-[200px]">
-                {step === 5 ? "Submit onboarding" : "Save & continue"}
-                {step < 5 && <ChevronRight className="h-4 w-4" />}
-              </Button>
+              {reviewMode ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStep((Math.max(1, step - 1) as Step))}
+                    disabled={step <= 1}
+                    className="h-9 w-10 rounded-xl px-0"
+                    aria-label="Previous section"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStep((Math.min(5, step + 1) as Step))}
+                    disabled={step >= 5}
+                    className="h-9 w-10 rounded-xl px-0"
+                    aria-label="Next section"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="submit"
+                  size="lg"
+                  disabled={isSubmitting}
+                  className="gap-2 cursor-pointer rounded-xl sm:min-w-[200px]"
+                >
+                  {step === 5 ? (isSubmitting ? "Submitting..." : "Submit onboarding") : "Save & continue"}
+                  {step < 5 && <ChevronRight className="h-4 w-4" />}
+                </Button>
+              )}
             </div>
           </form>
         </div>
@@ -531,6 +685,7 @@ function FormGroup({
   placeholder,
   type = "text",
   required = true,
+  readOnly = false,
 }: {
   label: string;
   value: string;
@@ -538,6 +693,7 @@ function FormGroup({
   placeholder: string;
   type?: string;
   required?: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <div className="space-y-2.5">
@@ -547,9 +703,11 @@ function FormGroup({
       </Label>
       <Input
         required={required}
+        readOnly={readOnly}
+        disabled={readOnly}
         type={type}
         placeholder={placeholder}
-        className="h-11 rounded-lg border-input bg-background px-3 text-sm font-medium shadow-none placeholder:text-muted-foreground/80 focus-visible:ring-2 focus-visible:ring-ring/35 md:h-12 md:rounded-xl md:px-4"
+        className="h-11 rounded-lg border-input bg-background px-3 text-sm font-medium shadow-none placeholder:text-muted-foreground/80 focus-visible:ring-2 focus-visible:ring-ring/35 disabled:cursor-default disabled:opacity-100 md:h-12 md:rounded-xl md:px-4"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
