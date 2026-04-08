@@ -54,48 +54,57 @@ export async function sendSubmissionToTelegram(message: TelegramSubmissionMessag
   }
 
   const text = [
-    "NEW CANDIDATE ONBOARDING SUBMISSION",
+    `*NEW CANDIDATE ONBOARDING SUBMISSION*`,
     "",
-    `Submission ID: ${message.submissionId}`,
-    `Clerk ID: ${message.clerkId}`,
-    `Account Email: ${formatValue(message.userEmail)}`,
-    `Submitted At: ${message.submittedAt.toISOString()}`,
+    `*Clerk ID:* \`${message.clerkId}\``,
+    `*Account Email:* ${formatValue(message.userEmail)}`,
+    `*Submitted At:* ${message.submittedAt.toISOString()}`,
     "",
-    "PERSONAL",
+    "*PERSONAL*",
     `- Full Name: ${formatValue(message.personal.fullName)}`,
     `- Email: ${formatValue(message.personal.email)}`,
     `- Phone: ${formatValue(message.personal.phone)}`,
     `- Aadhaar/PAN: ${formatValue(message.personal.aadhaarPan)}`,
     `- Profile Picture: ${message.personal.profilePicture ? "Provided" : "Not provided"}`,
     "",
-    "ADDRESS",
+    "*ADDRESS*",
     `- Address: ${formatValue(message.address.address)}`,
     `- City: ${formatValue(message.address.city)}`,
     `- State: ${formatValue(message.address.state)}`,
     `- ZIP/PIN: ${formatValue(message.address.zipCode)}`,
     `- Country: ${formatValue(message.address.country)}`,
     "",
-    "FAMILY",
+    "*FAMILY*",
     `- Parent/Guardian Name: ${formatValue(message.family.parentName)}`,
     `- Parent/Guardian Phone: ${formatValue(message.family.parentPhone)}`,
     "",
-    "BANK",
+    "*BANK*",
     `- Name as per Bank: ${formatValue(message.bank.bankAccountName)}`,
     `- Account Number: ${formatValue(message.bank.accountNumber)}`,
     `- IFSC: ${formatValue(message.bank.ifscCode)}`,
     `- SWIFT: ${formatValue(message.bank.swiftCode)}`,
     `- Linked Phone: ${formatValue(message.bank.linkedPhone)}`,
     "",
-    "SOCIAL",
+    "*SOCIAL*",
     `- Telegram: ${formatValue(message.social.telegram)}`,
     `- LinkedIn: ${formatValue(message.social.linkedin)}`,
     `- X/Twitter: ${formatValue(message.social.xHandle)}`,
     `- GitHub: ${formatValue(message.social.github)}`,
+    "",
+    "_Reply to manage status flow._"
   ].join("\n");
 
   const payload: Record<string, unknown> = {
     chat_id: chatId,
     text,
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "🚀 Mark Offer Sent", callback_data: `sent:${message.clerkId}` }
+        ]
+      ]
+    }
   };
 
   if (messageThreadId) {

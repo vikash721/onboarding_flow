@@ -77,3 +77,29 @@ export async function deleteSubmissionsForUser(clerkId: string) {
     throw error;
   }
 }
+
+export async function updateSubmissionStatus(clerkId: string, statusUpdate: { offerLetterSent?: boolean, offerLetterSigned?: boolean }) {
+  try {
+    const client = await clientPromise;
+    const db = client.db("test");
+    const collection = db.collection("submissions");
+
+    const updateFields: any = {};
+    if (statusUpdate.offerLetterSent !== undefined) {
+      updateFields["status.offerLetterSent"] = statusUpdate.offerLetterSent;
+    }
+    if (statusUpdate.offerLetterSigned !== undefined) {
+      updateFields["status.offerLetterSigned"] = statusUpdate.offerLetterSigned;
+    }
+
+    const result = await collection.updateOne(
+      { clerkId },
+      { $set: updateFields }
+    );
+
+    return result;
+  } catch (error) {
+    console.error("Failed to update submission status:", error);
+    throw error;
+  }
+}

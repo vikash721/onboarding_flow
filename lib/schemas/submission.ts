@@ -36,6 +36,13 @@ export const onboardingSubmissionSchema = z.object({
     xHandle: optionalUrlOrHandle,
     github: optionalUrlOrHandle,
   }),
+  status: z.object({
+    offerLetterSent: z.boolean().default(false),
+    offerLetterSigned: z.boolean().default(false),
+  }).default({
+    offerLetterSent: false,
+    offerLetterSigned: false,
+  }),
   submittedAt: z.date().default(() => new Date()),
 });
 
